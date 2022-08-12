@@ -11,7 +11,9 @@ from flask_sqlalchemy import SQLAlchemy
 import logging
 from logging import Formatter, FileHandler
 from flask_wtf import Form
+from config import SQLALCHEMY_DATABASE_URI
 from forms import *
+from flask_migrate import Migrate
 #----------------------------------------------------------------------------#
 # App Config.
 #----------------------------------------------------------------------------#
@@ -20,12 +22,15 @@ app = Flask(__name__)
 moment = Moment(app)
 app.config.from_object('config')
 db = SQLAlchemy(app)
+db.init_app(app)
 
 # TODO: connect to a local postgresql database
+SQLALCHEMY_DATABASE_URI = 'postgresql://postgres:admin@localhost:5432/fyyurapp'
 
 #----------------------------------------------------------------------------#
 # Models.
 #----------------------------------------------------------------------------#
+migrate = Migrate(app, db)
 
 class Venue(db.Model):
     __tablename__ = 'Venue'
@@ -57,6 +62,16 @@ class Artist(db.Model):
 
 # TODO Implement Show and Artist models, and complete all model relationships and properties, as a database migration.
 
+class Show(db.Model):
+  __tablename__ = 'Show'
+  id = db.Column(db.Integer, primary_key=True)
+  id_artists = db.Column(db.Integer, db.ForeignKey('Artist.id'), nullable=False)
+  id_venues = db.Column(db.Integer, db.ForeignKey('Venue.id'), nullable=False)
+  time_to_start = db.Column(db.DateTime, nullable=False)
+
+  venue = db.relationship('Venue')
+  artist = db.relationship('Artist')
+
 #----------------------------------------------------------------------------#
 # Filters.
 #----------------------------------------------------------------------------#
@@ -87,6 +102,8 @@ def index():
 def venues():
   # TODO: replace with real venues data.
   #       num_upcoming_shows should be aggregated based on number of upcoming shows per venue.
+  
+  
   data=[{
     "city": "San Francisco",
     "state": "CA",
