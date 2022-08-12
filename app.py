@@ -3,6 +3,7 @@
 #----------------------------------------------------------------------------#
 
 import json
+import sys
 import dateutil.parser
 import babel
 from flask import Flask, render_template, request, Response, flash, redirect, url_for
@@ -103,7 +104,31 @@ def venues():
   # TODO: replace with real venues data.
   #       num_upcoming_shows should be aggregated based on number of upcoming shows per venue.
   
-  
+  venues = Venue.query.order_by(Venue.state, Venue.city).all()
+
+  data = []
+  data_dict = {}
+  prev_city = None
+  prev_state = None
+  for venue in venues:
+    venue_data = {
+      'id': venue.id,
+      'name': venue.name,
+      'num_upcoming_shows': len(list(filter(lambda x: x.start_time > datetime.today(),
+                                                  venue.shows)))
+        }
+    if venue.city == prev_city and venue.state == prev_state:
+      data_dict['venues'].append(venue_data)
+    else:
+      if prev_city is not None:
+        data.append(data_dict)
+        data_dict['city'] = venue.city
+        data_dict['state'] = venue.state
+        data_dict['venues'] = [venue_data]
+        prev_city = venue.city
+        prev_state = venue.state
+
+
   data=[{
     "city": "San Francisco",
     "state": "CA",
@@ -125,13 +150,33 @@ def venues():
       "num_upcoming_shows": 0,
     }]
   }]
-  return render_template('pages/venues.html', areas=data);
+  data.append(data_dict)
+  return render_template('pages/venues.html', areas=data)
 
 @app.route('/venues/search', methods=['POST'])
 def search_venues():
   # TODO: implement search on artists with partial string search. Ensure it is case-insensitive.
   # seach for Hop should return "The Musical Hop".
   # search for "Music" should return "The Musical Hop" and "Park Square Live Music & Coffee"
+  
+  terme_de_recherche = request.form.get('search_term')
+  venues = Venue.query.filter(
+    Venue.name.ilike('%{}%'.format(terme_de_recherche))
+  ).all()
+
+  data = []
+  for venue in venues:
+    data_dict = {}
+    data_dict['id'] = venue.id
+    data_dict['name'] = venue.name
+    data_dict['num_upcoming_shows'] = len(venue.shows)
+    data.append(data_dict)
+
+
+  response = {}
+  response['count'] = len(data)
+  response['data'] = data
+  
   response={
     "count": 1,
     "data": [{
@@ -140,12 +185,27 @@ def search_venues():
       "num_upcoming_shows": 0,
     }]
   }
-  return render_template('pages/search_venues.html', results=response, search_term=request.form.get('search_term', ''))
+  return render_template('pages/search_venues.html', results=response, terme_de_recherche=request.form.get('search_term', ''))
 
 @app.route('/venues/<int:venue_id>')
 def show_venue(venue_id):
   # shows the venue page with the given venue_id
   # TODO: replace with real venue data from the venues table, using venue_id
+
+  venue = Venue.query.get(venue_id)
+
+  past_shows = list(filter(lambda x: x.start_time < datetime.today(), venue.shows))
+  upcoming_shows = list(filter(lambda x: x.start_time >= datetime.today(), venue.shows))
+
+  past_shows = list(map(lambda x: x.show_artist(), past_shows))
+  upcoming_shows = list(map(lambda x: x.show_artist(), upcoming_shows))
+
+  data = venue.to_dict()
+  data['past_shows'] = past_shows
+  data['upcoming_shows'] = upcoming_shows
+  data['past_shows_count'] = len(past_shows)
+  data['upcoming_shows_count'] = len(upcoming_shows)
+
   data1={
     "id": 1,
     "name": "The Musical Hop",
@@ -238,9 +298,34 @@ def create_venue_form():
 def create_venue_submission():
   # TODO: insert form data as a new Venue record in the db, instead
   # TODO: modify data to be the data object returned from db insertion
+  error = False
+  try:
+    venue = Venue()
+    venue.name = request.form['name']
+    venue.city = request.form['city']
+    venue.state = request.form['state']
+    venue.address = request.form['address']
+    venue.phone = request.form['phone']
+    tmp_genres = request.form.getlist('genres')
+    venue.genres = ','.join(tmp_genres)
+    venue.facebook_link = request.form['facebook_link']
+    db.session.add(venue)
+    db.session.commit()
+  
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info())
+
+  finally:
+    db.session.close()
+    if error:
+      flash('An error occured. Venue ' +
+        request.form['name'] + ' Could not be listed!')
+    else:
 
   # on successful db insert, flash success
-  flash('Venue ' + request.form['name'] + ' was successfully listed!')
+      flash('Venue ' + request.form['name'] + ' was successfully listed!')
   # TODO: on unsuccessful db insert, flash an error instead.
   # e.g., flash('An error occurred. Venue ' + data.name + ' could not be listed.')
   # see: http://flask.pocoo.org/docs/1.0/patterns/flashing/
@@ -260,6 +345,7 @@ def delete_venue(venue_id):
 @app.route('/artists')
 def artists():
   # TODO: replace with real data returned from querying the database
+
   data=[{
     "id": 4,
     "name": "Guns N Petals",
@@ -270,7 +356,7 @@ def artists():
     "id": 6,
     "name": "The Wild Sax Band",
   }]
-  return render_template('pages/artists.html', artists=data)
+  return render_template('pages/artists.html', artists=Artist.query.all())
 
 @app.route('/artists/search', methods=['POST'])
 def search_artists():
@@ -291,6 +377,22 @@ def search_artists():
 def show_artist(artist_id):
   # shows the artist page with the given artist_id
   # TODO: replace with real artist data from the artist table, using artist_id
+
+  artist = Artist.query.get(artist_id)
+  past_shows = list(filter(lambda x: x.start_time < datetime.today(), artist.shows))
+
+  upcoming_shows = list(filter(lambda x: x.start_time >= datetime.today(), artist.shows))
+  
+  past_shows = list(map(lambda x: x.show_venue(), past_shows))
+  upcoming_shows = list(map(lambda x: x.show_venue(), upcoming_shows))
+  
+  data = artist.to_dict()
+  print(data)
+  data['past_shows'] = past_shows
+  data['upcoming_shows'] = upcoming_shows
+  data['past_shows_count'] = len(past_shows)
+  data['upcoming_shows_count'] = len(upcoming_shows)
+
   data1={
     "id": 4,
     "name": "Guns N Petals",
@@ -362,7 +464,7 @@ def show_artist(artist_id):
     "past_shows_count": 0,
     "upcoming_shows_count": 3,
   }
-  data = list(filter(lambda d: d['id'] == artist_id, [data1, data2, data3]))[0]
+  # data = list(filter(lambda d: d['id'] == artist_id, [data1, data2, data3]))[0]
   return render_template('pages/show_artist.html', artist=data)
 
 #  Update
@@ -384,6 +486,9 @@ def edit_artist(artist_id):
     "image_link": "https://images.unsplash.com/photo-1549213783-8284d0336c4f?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=300&q=80"
   }
   # TODO: populate form with fields from artist with ID <artist_id>
+  form = ArtistForm()
+  artist = Artist.query.get(artist_id)
+  
   return render_template('forms/edit_artist.html', form=form, artist=artist)
 
 @app.route('/artists/<int:artist_id>/edit', methods=['POST'])
@@ -391,7 +496,31 @@ def edit_artist_submission(artist_id):
   # TODO: take values from the form submitted, and update existing
   # artist record with ID <artist_id> using the new attributes
 
-  return redirect(url_for('show_artist', artist_id=artist_id))
+  error = False
+  try:
+    artist = Artist.query.get(artist_id)
+    artist.name = request.form['name']
+    artist.city = request.form['city']
+    artist.state = request.form['state']
+    artist.phone = request.form['phone']
+    tmp_genres = request.form.getlist('genres')
+    artist.genres = ','.join(tmp_genres)
+    artist.website = request.form['website']
+    artist.image_link = request.form['image_link']
+    artist.facebook_link = request.form['facebook_link']
+    artist.seeking_description = request.form['seeking_description']
+    db.session.add(artist)
+    db.session.commit()
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info)
+  finally:
+    db.session.close()
+    if error:
+      return redirect(url_for('server_error'))
+    else:
+      return redirect(url_for('show_artist', artist_id=artist_id))
 
 @app.route('/venues/<int:venue_id>/edit', methods=['GET'])
 def edit_venue(venue_id):
