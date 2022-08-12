@@ -540,12 +540,38 @@ def edit_venue(venue_id):
     "image_link": "https://images.unsplash.com/photo-1543900694-133f37abaaa5?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=400&q=60"
   }
   # TODO: populate form with values from venue with ID <venue_id>
+  venue = Venue.query.get(venue_id).to_dict()
   return render_template('forms/edit_venue.html', form=form, venue=venue)
 
 @app.route('/venues/<int:venue_id>/edit', methods=['POST'])
 def edit_venue_submission(venue_id):
   # TODO: take values from the form submitted, and update existing
   # venue record with ID <venue_id> using the new attributes
+
+  venue = Venue.query.get(venue_id)
+
+  error = False
+  try:
+    venue.name = request.form['name']
+    venue.city = request.form['city']
+    venue.state = request.form['state']
+    venue.address = request.form['address']
+    venue.phone = request.form['phone']
+    tmp_genres = request.form.getlist('genres')
+    venue.genres = ','.join(tmp_genres)  # convert list to string
+    venue.facebook_link = request.form['facebook_link']
+    db.session.add(venue)
+    db.session.commit()
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info())
+  finally:
+    db.session.close()
+    if error:
+      flash('An error occurred. Venue ' + request.form['name'] + ' could not be updated.') 
+    else:
+      flash('Venue ' + request.form['name'] + ' was successfully updated!')
   return redirect(url_for('show_venue', venue_id=venue_id))
 
 #  Create Artist
@@ -561,12 +587,38 @@ def create_artist_submission():
   # called upon submitting the new artist listing form
   # TODO: insert form data as a new Venue record in the db, instead
   # TODO: modify data to be the data object returned from db insertion
-
-  # on successful db insert, flash success
-  flash('Artist ' + request.form['name'] + ' was successfully listed!')
-  # TODO: on unsuccessful db insert, flash an error instead.
-  # e.g., flash('An error occurred. Artist ' + data.name + ' could not be listed.')
-  return render_template('pages/home.html')
+  form = ArtistForm()
+  error = False
+  try:
+    artist = Artist()
+    artist.name = request.form['name']
+    artist.city = request.form['city']
+    artist.state = request.form['state']
+    artist.phone = request.form['phone']
+    tmp_genres = request.form.getlist('genres')
+    artist.genres = ','.join(tmp_genres)
+    artist.website = request.form['website']
+    artist.image_link = request.form['image_link']
+    artist.facebook_link = request.form['facebook_link']
+    artist.seeking_description = request.form['seeking_description']
+    db.session.add(artist)
+    db.session.commit()
+  except:
+    error = True
+    db.session.rollback()
+    print(sys.exc_info())
+  finally:
+    db.session.close()
+    if error:
+        flash('An error occurred. Artist ' +
+              request.form['name'] + ' could not be listed.')
+    else:
+     # on successful db insert, flash success
+      flash('Artist ' + request.form['name'] + ' was successfully listed!')
+  
+    # TODO: on unsuccessful db insert, flash an error instead.
+    # e.g., flash('An error occurred. Artist ' + data.name + ' could not be listed.')
+    return render_template('pages/home.html')
 
 
 #  Shows
@@ -576,6 +628,8 @@ def create_artist_submission():
 def shows():
   # displays list of shows at /shows
   # TODO: replace with real venues data.
+  spectacle = Show.query.all()
+
   data=[{
     "venue_id": 1,
     "venue_name": "The Musical Hop",
@@ -612,6 +666,17 @@ def shows():
     "artist_image_link": "https://images.unsplash.com/photo-1558369981-f9ca78462e61?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=crop&w=794&q=80",
     "start_time": "2035-04-15T20:00:00.000Z"
   }]
+
+  data = []
+  for show in shows:
+    data.append({
+      'venue_id': show.venue.id,
+      'venue_name': show.venue.name,
+      'artist_id': show.artist.id,
+      'artist_name': show.artist.name,
+      'artist_image_link': show.artist.image_link,
+      'start_time': show.start_time.isoformat()
+    })
   return render_template('pages/shows.html', shows=data)
 
 @app.route('/shows/create')
